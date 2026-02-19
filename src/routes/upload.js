@@ -11,7 +11,7 @@ const upload = multer({
 });
 
 // Railway 存储桶配置 (S3兼容)
-const s3Client = new S3Client({
+const s3Config = {
   region: process.env.AWS_DEFAULT_REGION || 'us-east-1',
   endpoint: process.env.AWS_ENDPOINT_URL,
   credentials: {
@@ -19,7 +19,15 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
   forcePathStyle: true,
+};
+
+console.log('S3 Config:', {
+  region: s3Config.region,
+  endpoint: s3Config.endpoint,
+  hasCredentials: !!(s3Config.credentials.accessKeyId && s3Config.credentials.secretAccessKey)
 });
+
+const s3Client = new S3Client(s3Config);
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'leeao-images';
 
@@ -33,11 +41,13 @@ if (!RAILWAY_URL.startsWith('http')) {
 router.post('/image', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
+      console.error('Upload error: No file');
       return res.status(400).json({ error: '没有文件' });
     }
 
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(req.file.mimetype)) {
+      console.error('Upload error: Invalid type', req.file.mimetype);
       return res.status(400).json({ error: '不支持的文件类型' });
     }
 
@@ -45,14 +55,17 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
     const ext = req.file.mimetype.split('/')[1];
     const fileName = `images/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
 
+    console.log('Uploading to bucket:', BUCKET_NAME, 'key:', fileName);
+
     // 上传到 Railway Bucket
-    await s3Client.send(new PutObjectCommand({
+    const uploadParams = {
       Bucket: BUCKET_NAME,
       Key: fileName,
       Body: req.file.buffer,
       ContentType: req.file.mimetype,
-      ACL: 'public-read',
-    }));
+    };
+
+    await s3Client.send(new PutObjectCommand(uploadParams));
 
     // 返回通过Railway代理的图片URL
     const imageUrl = `${RAILWAY_URL}/upload/image/${fileName}`;
@@ -60,7 +73,7 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
 
     res.json({ success: true, url: imageUrl, key: fileName });
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('Upload error:', error.message, error.stack);
     res.status(500).json({ error: error.message });
   }
 });
@@ -73,6 +86,8 @@ router.get('/image/:key(*)', async (req, res) => {
     if (!key || key.includes('..') || key.startsWith('/')) {
       return res.status(400).json({ error: 'Invalid key' });
     }
+
+    console.log('Fetching image:', key);
 
     // 从Railway Bucket获取图片
     const command = new GetObjectCommand({
@@ -95,7 +110,7 @@ router.get('/image/:key(*)', async (req, res) => {
     }
     res.send(Buffer.concat(chunks));
   } catch (error) {
-    console.error('Image proxy error:', error);
+    console.error('Image proxy error:', error.message);
     res.status(404).json({ error: '图片不存在' });
   }
 });
