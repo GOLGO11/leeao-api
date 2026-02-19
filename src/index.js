@@ -7,6 +7,7 @@ const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/community');
 const articleRoutes = require('./routes/articles');
 const uploadRoutes = require('./routes/upload');
+const User = require('./models/User');
 
 const app = express();
 
@@ -15,10 +16,34 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 连接MongoDB
+// 连接MongoDB并初始化管理员
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb://localhost:27017/leeao';
+
+async function initializeAdmin() {
+  try {
+    // 查找管理员用户
+    const adminUser = await User.findOne({ username: '爱华山樱' });
+    
+    if (adminUser && adminUser.role !== 'admin') {
+      // 更新为管理员
+      await User.findByIdAndUpdate(adminUser._id, { role: 'admin' });
+      console.log('Admin role updated for user: 爱华山樱');
+    } else if (adminUser) {
+      console.log('Admin already exists: 爱华山樱');
+    } else {
+      console.log('Admin user not found yet');
+    }
+  } catch (error) {
+    console.error('Init admin error:', error.message);
+  }
+}
+
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
+  .then(() => {
+    console.log('MongoDB connected');
+    // 初始化管理员
+    initializeAdmin();
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // 路由
