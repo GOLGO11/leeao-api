@@ -10,17 +10,20 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// R2 配置
-const r2Client = new S3Client({
-  region: 'auto',
-  endpoint: process.env.R2_ENDPOINT,
+// Railway 存储桶配置 (S3兼容)
+const s3Client = new S3Client({
+  region: process.env.REGION || 'us-east-1',
+  endpoint: process.env.ENDPOINT,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-  }
+    accessKeyId: process.env.ACCESS_KEY_ID,
+    secretAccessKey: process.env.SECRET_ACCESS_KEY,
+  },
+  forcePathStyle: true,
 });
 
-// Railway API URL (用于生成图片访问URL)
+const BUCKET_NAME = process.env.RAILWAY_BUCKET_NAME || 'leeao-images';
+
+// Railway 项目 URL
 const RAILWAY_URL = process.env.RAILWAY_STATIC_URL || 'https://leeao-api-production.up.railway.app';
 
 // 图片上传
@@ -39,12 +42,13 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
     const ext = req.file.mimetype.split('/')[1];
     const fileName = `images/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
 
-    // 上传到 R2
-    await r2Client.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
+    // 上传到 Railway Bucket
+    await s3Client.send(new PutObjectCommand({
+      Bucket: BUCKET_NAME,
       Key: fileName,
       Body: req.file.buffer,
-      ContentType: req.file.mimetype
+      ContentType: req.file.mimetype,
+      ACL: 'public-read',
     }));
 
     // 返回通过Railway代理的图片URL
@@ -57,7 +61,7 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
   }
 });
 
-// 图片代理访问 - 从R2获取图片并返回
+// 图片代理访问 - 从Railway Bucket获取图片并返回
 router.get('/image/:key(*)', async (req, res) => {
   try {
     const key = req.params.key;
@@ -66,17 +70,17 @@ router.get('/image/:key(*)', async (req, res) => {
       return res.status(400).json({ error: 'Invalid key' });
     }
 
-    // 从R2获取图片
+    // 从Railway Bucket获取图片
     const command = new GetObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
+      Bucket: BUCKET_NAME,
       Key: key
     });
 
-    const response = await r2Client.send(command);
+    const response = await s3Client.send(command);
     
     // 设置响应头
     res.setHeader('Content-Type', response.ContentType || 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 缓存1年
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     // 流式传输图片数据
