@@ -40,7 +40,7 @@ router.post('/register', async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user._id, username: user.username }
+      user: { id: user._id.toString(), username: user.username, createdAt: user.createdAt }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

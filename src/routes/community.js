@@ -5,6 +5,39 @@ const Comment = require('../models/Comment');
 const User = require('../models/User');
 const { authMiddleware, verifyToken } = require('../middleware/auth');
 
+// 将 MongoDB 文档转换为前端兼容格式
+function formatPost(post) {
+  const obj = post.toObject ? post.toObject() : post;
+  return {
+    id: obj._id.toString(),
+    _id: obj._id.toString(),
+    board: obj.board,
+    title: obj.title,
+    content: obj.content,
+    authorId: obj.authorId,
+    authorName: obj.authorName,
+    images: obj.images || [],
+    commentCount: obj.commentCount || 0,
+    createdAt: obj.createdAt
+  };
+}
+
+function formatComment(comment) {
+  const obj = comment.toObject ? comment.toObject() : comment;
+  return {
+    id: obj._id.toString(),
+    _id: obj._id.toString(),
+    postId: obj.postId,
+    content: obj.content,
+    authorId: obj.authorId,
+    authorName: obj.authorName,
+    images: obj.images || [],
+    replyToAuthorId: obj.replyToAuthorId,
+    replyToAuthorName: obj.replyToAuthorName,
+    createdAt: obj.createdAt
+  };
+}
+
 // 获取帖子列表
 router.get('/posts', async (req, res) => {
   try {
@@ -18,7 +51,7 @@ router.get('/posts', async (req, res) => {
       .skip(skip)
       .limit(pageSize);
 
-    res.json({ posts, page: parseInt(page), pageSize });
+    res.json({ posts: posts.map(formatPost), page: parseInt(page), pageSize });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -31,7 +64,7 @@ router.get('/post/:id', async (req, res) => {
     if (!post) {
       return res.status(404).json({ error: '帖子不存在' });
     }
-    res.json({ post });
+    res.json({ post: formatPost(post) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -56,12 +89,12 @@ router.post('/post', authMiddleware, async (req, res) => {
       title,
       content,
       images: images || [],
-      authorId: req.userId,
+      authorId: req.userId.toString(),
       authorName: user.username
     });
     await post.save();
 
-    res.json({ success: true, post });
+    res.json({ success: true, post: formatPost(post) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -75,7 +108,7 @@ router.delete('/post/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '帖子不存在' });
     }
 
-    if (post.authorId !== req.userId) {
+    if (post.authorId !== req.userId.toString()) {
       return res.status(403).json({ error: '只能删除自己的帖子' });
     }
 
@@ -93,7 +126,7 @@ router.get('/comments/:postId', async (req, res) => {
   try {
     const comments = await Comment.find({ postId: req.params.postId })
       .sort({ createdAt: 1 });
-    res.json({ comments });
+    res.json({ comments: comments.map(formatComment) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -121,7 +154,7 @@ router.post('/comment', authMiddleware, async (req, res) => {
       postId,
       content: content || '',
       images: images || [],
-      authorId: req.userId,
+      authorId: req.userId.toString(),
       authorName: user.username,
       replyToAuthorId,
       replyToAuthorName
@@ -133,7 +166,7 @@ router.post('/comment', authMiddleware, async (req, res) => {
       $inc: { commentCount: 1 }
     });
 
-    res.json({ success: true, comment });
+    res.json({ success: true, comment: formatComment(comment) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -147,7 +180,7 @@ router.delete('/comment/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '评论不存在' });
     }
 
-    if (comment.authorId !== req.userId) {
+    if (comment.authorId !== req.userId.toString()) {
       return res.status(403).json({ error: '只能删除自己的评论' });
     }
 
@@ -173,7 +206,7 @@ router.get('/user/:userId/posts', async (req, res) => {
 
     const total = await Post.countDocuments({ authorId: req.params.userId });
 
-    res.json({ posts, total });
+    res.json({ posts: posts.map(formatPost), total });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -190,8 +223,9 @@ router.get('/user/:userId/comments', async (req, res) => {
     const commentsWithPostTitle = await Promise.all(
       comments.map(async (comment) => {
         const post = await Post.findById(comment.postId);
+        const formatted = formatComment(comment);
         return {
-          ...comment.toObject(),
+          ...formatted,
           postTitle: post ? post.title : '未知帖子'
         };
       })
