@@ -70,7 +70,24 @@ router.delete('/:id', async (req, res) => {
       return res.status(401).json({ error: '未授权' });
     }
 
-    await Article.findByIdAndDelete(req.params.id);
+    const id = req.params.id;
+    let article;
+    
+    // 尝试用 MongoDB _id 查找
+    if (id.length === 24) {
+      article = await Article.findByIdAndDelete(id);
+    }
+    
+    // 如果没找到，尝试用 URL 中的 ID 查找
+    if (!article) {
+      const fullUrl = `https://mp.weixin.qq.com/s/${id}`;
+      article = await Article.findOneAndDelete({ url: fullUrl });
+    }
+    
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
