@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const CommentSchema = new mongoose.Schema({
   postId: { type: String, required: true },
-  content: { type: String, required: true },
+  content: { type: String, default: '' },
   authorId: { type: String, required: true },
   authorName: { type: String, required: true },
   images: [{ type: String }],
