@@ -3,6 +3,9 @@ const router = express.Router();
 const User = require('../models/User');
 const { hashPassword, generateToken } = require('../middleware/auth');
 
+// 管理员用户名列表
+const ADMIN_USERNAMES = ['爱华山樱'];
+
 // 注册
 router.post('/register', async (req, res) => {
   try {
@@ -28,9 +31,12 @@ router.post('/register', async (req, res) => {
 
     // 创建用户
     const hashedPassword = await hashPassword(password);
+    const role = ADMIN_USERNAMES.includes(username) ? 'admin' : 'user';
+    
     const user = new User({
       username,
-      password: hashedPassword
+      password: hashedPassword,
+      role
     });
     await user.save();
 
@@ -40,7 +46,12 @@ router.post('/register', async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user._id.toString(), username: user.username, createdAt: user.createdAt }
+      user: { 
+        id: user._id.toString(), 
+        username: user.username, 
+        role: user.role,
+        createdAt: user.createdAt 
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -71,7 +82,11 @@ router.post('/login', async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user._id, username: user.username }
+      user: { 
+        id: user._id, 
+        username: user.username,
+        role: user.role || 'user'
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

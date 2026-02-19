@@ -108,12 +108,19 @@ router.delete('/post/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '帖子不存在' });
     }
 
-    if (post.authorId !== req.userId.toString()) {
-      return res.status(403).json({ error: '只能删除自己的帖子' });
+    // 获取用户信息检查权限
+    const user = await User.findById(req.userId);
+    const isAdmin = user && user.role === 'admin';
+    const isAuthor = post.authorId === req.userId.toString();
+
+    if (!isAdmin && !isAuthor) {
+      return res.status(403).json({ error: '没有权限删除此帖子' });
     }
 
     await Post.findByIdAndDelete(req.params.id);
     await Comment.deleteMany({ postId: req.params.id });
+
+    console.log(`Post ${req.params.id} deleted by ${user?.username} (${isAdmin ? 'admin' : 'author'})`);
 
     res.json({ success: true });
   } catch (error) {
@@ -205,16 +212,27 @@ router.delete('/comment/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '评论不存在' });
     }
 
-    if (comment.authorId !== req.userId.toString()) {
-      return res.status(403).json({ error: '只能删除自己的评论' });
+    // 获取用户信息检查权限
+    const user = await User.findById(req.userId);
+    const isAdmin = user && user.role === 'admin';
+    const isAuthor = comment.authorId === req.userId.toString();
+
+    if (!isAdmin && !isAuthor) {
+      return res.status(403).json({ error: '没有权限删除此评论' });
     }
 
     await Comment.findByIdAndDelete(req.params.id);
 
     // 更新帖子评论数
-    await Post.findByIdAndUpdate(comment.postId, {
-      $inc: { commentCount: -1 }
-    });
+    try {
+      await Post.findByIdAndUpdate(comment.postId, {
+        $inc: { commentCount: -1 }
+      });
+    } catch (e) {
+      console.log('Update post count error:', e.message);
+    }
+
+    console.log(`Comment ${req.params.id} deleted by ${user?.username} (${isAdmin ? 'admin' : 'author'})`);
 
     res.json({ success: true });
   } catch (error) {
