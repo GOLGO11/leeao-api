@@ -137,6 +137,13 @@ router.post('/comment', authMiddleware, async (req, res) => {
   try {
     const { postId, content, images, replyToAuthorId, replyToAuthorName } = req.body;
 
+    console.log('createComment request:', {
+      userId: req.userId,
+      postId,
+      content: content ? `(len:${content.length})` : '(empty)',
+      imagesCount: images ? images.length : 0
+    });
+
     if (!postId) {
       return res.status(400).json({ error: '帖子ID必填' });
     }
@@ -145,8 +152,19 @@ router.post('/comment', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: '内容或图片至少需要一个' });
     }
 
-    const user = await User.findById(req.userId);
+    // 查找用户
+    let user;
+    try {
+      user = await User.findById(req.userId);
+    } catch (findError) {
+      console.log('Find user error:', findError.message);
+      return res.status(401).json({ error: '用户不存在' });
+    }
+
+    console.log('Found user:', user ? { id: user._id.toString(), name: user.username } : 'null');
+
     if (!user) {
+      console.log('User not found for id:', req.userId);
       return res.status(401).json({ error: '用户不存在' });
     }
 
@@ -162,12 +180,19 @@ router.post('/comment', authMiddleware, async (req, res) => {
     await comment.save();
 
     // 更新帖子评论数
-    await Post.findByIdAndUpdate(postId, {
-      $inc: { commentCount: 1 }
-    });
+    try {
+      await Post.findByIdAndUpdate(postId, {
+        $inc: { commentCount: 1 }
+      });
+    } catch (updateError) {
+      console.log('Update post error:', updateError.message);
+    }
+
+    console.log('Comment created:', comment._id.toString());
 
     res.json({ success: true, comment: formatComment(comment) });
   } catch (error) {
+    console.error('createComment error:', error.message, error.stack);
     res.status(500).json({ error: error.message });
   }
 });
