@@ -23,8 +23,11 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'leeao-images';
 
-// Railway 项目 URL
-const RAILWAY_URL = process.env.RAILWAY_STATIC_URL || 'https://leeao-api-production.up.railway.app';
+// Railway 项目 URL - 确保包含 https://
+let RAILWAY_URL = process.env.RAILWAY_STATIC_URL || 'https://leeao-api-production.up.railway.app';
+if (!RAILWAY_URL.startsWith('http')) {
+  RAILWAY_URL = 'https://' + RAILWAY_URL;
+}
 
 // 图片上传
 router.post('/image', authMiddleware, upload.single('file'), async (req, res) => {
@@ -53,6 +56,7 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
 
     // 返回通过Railway代理的图片URL
     const imageUrl = `${RAILWAY_URL}/upload/image/${fileName}`;
+    console.log('Upload successful, URL:', imageUrl);
 
     res.json({ success: true, url: imageUrl, key: fileName });
   } catch (error) {
