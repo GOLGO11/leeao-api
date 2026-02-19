@@ -36,6 +36,11 @@ router.post('/add', async (req, res) => {
     let metadata = {};
     try {
       metadata = await fetchMetadata(url);
+      console.log('Fetched metadata:', {
+        title: metadata.title,
+        author: metadata.author,
+        publishTime: metadata.publishTime
+      });
     } catch (e) {
       console.error('获取元数据失败:', e);
     }
@@ -103,25 +108,96 @@ function extractMeta(html, property) {
 
 function extractTag(html, tag) {
   const match = html.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`, 'i'));
-  return match ? match[1].trim() : null;
+  return match ? decodeHtmlEntities(match[1].trim()) : null;
 }
 
 function extractPublishTime(html) {
-  const match = html.match(/publish_time%22%3A(\d+)/);
+  // 方法1: publish_time 时间戳
+  let match = html.match(/publish_time%22%3A(\d+)/);
   if (match) {
-    return new Date(parseInt(match[1]) * 1000).toISOString();
+    const timestamp = parseInt(match[1]);
+    console.log('Found publish_time timestamp:', timestamp);
+    return new Date(timestamp * 1000).toISOString();
   }
+
+  // 方法2: create_time 时间戳
+  match = html.match(/create_time["']?\s*[:=]\s*["']?(\d{10})/);
+  if (match) {
+    const timestamp = parseInt(match[1]);
+    console.log('Found create_time timestamp:', timestamp);
+    return new Date(timestamp * 1000).toISOString();
+  }
+
+  // 方法3: 时间戳格式 (13位毫秒)
+  match = html.match(/"create_time":(\d{13})/);
+  if (match) {
+    const timestamp = parseInt(match[1]);
+    console.log('Found create_time ms timestamp:', timestamp);
+    return new Date(timestamp).toISOString();
+  }
+
+  // 方法4: 日期格式 yyyy-mm-dd 或 yyyy/mm/dd
+  match = html.match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/);
+  if (match) {
+    const year = match[1];
+    const month = match[2].padStart(2, '0');
+    const day = match[3].padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    console.log('Found date format:', dateStr);
+    return dateStr;
+  }
+
+  // 方法5: 中文日期格式
+  match = html.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (match) {
+    const year = match[1];
+    const month = match[2].padStart(2, '0');
+    const day = match[3].padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    console.log('Found Chinese date format:', dateStr);
+    return dateStr;
+  }
+
+  console.log('No publish time found');
   return null;
 }
 
 function decodeHtmlEntities(str) {
   if (!str) return str;
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+  
+  // 先解码常见的 HTML 实体
+  let result = str
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&copy;/gi, '©')
+    .replace(/&reg;/gi, '®');
+  
+  // 解码引号 (多种格式)
+  result = result
+    .replace(/&quot;/gi, '"')
+    .replace(/&#34;/gi, '"')
+    .replace(/&#x22;/gi, '"')
+    .replace(/\\x26quot;/gi, '"')  // 微信的双重转义
+    .replace(/\\x26/gi, '&');     // 通用双重转义
+  
+  // 解码单引号
+  result = result
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'");
+  
+  // 解码其他数字实体
+  result = result.replace(/&#(\d+);/g, (match, num) => {
+    return String.fromCharCode(parseInt(num));
+  });
+  
+  // 解码十六进制实体
+  result = result.replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  
+  return result;
 }
 
 module.exports = router;
