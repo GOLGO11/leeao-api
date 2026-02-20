@@ -272,39 +272,60 @@ async function fetchVideoMetadata(url) {
 // 从B站页面提取完整数据
 function extractBilibiliData(html) {
   // B站新版页面使用 __INITIAL_STATE__
-  let match = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[^<]+?\});?\s*<\/script>/);
+  let match = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]+?\});\s*(?:<\/script>|$)/);
   if (match) {
     try {
-      const initialState = JSON.parse(match[1]);
+      const jsonStr = match[1].replace(/\n/g, '');
+      const initialState = JSON.parse(jsonStr);
+      console.log('B站 __INITIAL_STATE__ found, videoData:', !!initialState?.videoData);
       
       // 视频详情
       if (initialState?.videoData) {
         const videoData = initialState.videoData;
-        return {
+        const result = {
           title: videoData.title || '',
           description: videoData.desc || '',
           coverImage: videoData.pic || '',
           author: videoData.owner?.name || '',
           publishTime: videoData.pubdate ? formatDate(videoData.pubdate * 1000) : ''
         };
+        console.log('B站 metadata:', result);
+        return result;
       }
     } catch (e) {
-      console.error('Parse __INITIAL_STATE__ error:', e);
+      console.error('Parse __INITIAL_STATE__ error:', e.message);
     }
   }
   
-  // 旧版页面使用 og meta
+  // 尝试从 og meta 标签提取
+  const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+  const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+  
+  if (ogTitle || ogImage) {
+    return {
+      title: ogTitle ? decodeHtmlEntities(ogTitle[1]) : '',
+      description: ogDesc ? decodeHtmlEntities(ogDesc[1]) : '',
+      coverImage: ogImage ? ogImage[1] : '',
+      author: '',
+      publishTime: ''
+    };
+  }
+  
   return null;
 }
 
 // 从抖音页面提取完整数据
 function extractDouyinData(html) {
   // 尝试解析抖音的 _ROUTER_DATA
-  let match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[^<]+\})/);
+  let match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]+?\})\s*<\/script>/);
   if (match) {
     try {
-      const routerData = JSON.parse(match[1]);
+      const jsonStr = match[1].replace(/\n/g, '');
+      const routerData = JSON.parse(jsonStr);
       const loaderData = routerData?.loaderData;
+      console.log('抖音 _ROUTER_DATA found, loaderData:', !!loaderData);
+      
       if (loaderData) {
         for (const key in loaderData) {
           const data = loaderData[key];
@@ -312,13 +333,23 @@ function extractDouyinData(html) {
           // 视频详情
           if (data?.aweme_detail) {
             const detail = data.aweme_detail;
-            return {
+            console.log('抖音 aweme_detail found:', {
+              desc: !!detail.desc,
+              cover: !!detail.video?.cover,
+              author: !!detail.author?.nickname
+            });
+            
+            const result = {
               title: detail.desc || '',
               description: detail.desc || '',
-              coverImage: detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0] || '',
+              coverImage: detail.video?.cover?.url_list?.[0] || 
+                          detail.video?.origin_cover?.url_list?.[0] || 
+                          detail.video?.dynamic_cover?.url_list?.[0] || '',
               author: detail.author?.nickname || detail.author?.unique_id || '',
               publishTime: detail.create_time ? formatDate(detail.create_time * 1000) : ''
             };
+            console.log('抖音 metadata:', result);
+            return result;
           }
           
           // 图文笔记
@@ -335,7 +366,7 @@ function extractDouyinData(html) {
         }
       }
     } catch (e) {
-      console.error('Parse _ROUTER_DATA error:', e);
+      console.error('Parse _ROUTER_DATA error:', e.message);
     }
   }
   
