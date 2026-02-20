@@ -271,7 +271,9 @@ async function fetchVideoMetadata(url) {
 
 // 从B站页面提取完整数据
 function extractBilibiliData(html) {
-  // B站新版页面使用 __INITIAL_STATE__
+  console.log('Attempting to extract B站 metadata from HTML length:', html.length);
+
+  // 方法1: B站新版页面使用 __INITIAL_STATE__
   let match = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]+?\});\s*(?:<\/script>|$)/);
   if (match) {
     try {
@@ -279,15 +281,19 @@ function extractBilibiliData(html) {
       const initialState = JSON.parse(jsonStr);
       console.log('B站 __INITIAL_STATE__ found');
 
-      // 尝试多种路径获取视频数据
+      // 尝试多种路径获取视频数据 - B站新版可能路径不同
       let videoData = initialState?.videoData;
 
-      // 新版B站可能使用不同路径
+      // 新版B站可能使用的不同路径
       if (!videoData && initialState?.videoInfo) {
         videoData = initialState.videoInfo;
       }
       if (!videoData && initialState?.uplayerView) {
         videoData = initialState.uplayerView;
+      }
+      // 尝试从 viewData 获取
+      if (!videoData && initialState?.viewData) {
+        videoData = initialState.viewData;
       }
 
       if (videoData) {
@@ -299,7 +305,7 @@ function extractBilibiliData(html) {
           publishTime: videoData.pubdate ? formatDate(videoData.pubdate * 1000) :
                        (videoData.ptime ? formatDate(videoData.ptime * 1000) : '')
         };
-        console.log('B站 metadata:', result);
+        console.log('B站 metadata extracted:', result);
         return result;
       }
     } catch (e) {
@@ -307,88 +313,95 @@ function extractBilibiliData(html) {
     }
   }
 
-  // 尝试解析 <script> 标签中的 __playinfo__ 数据
-  match = html.match(/__playinfo__\s*=\s*(\{[\s\S]+?\})\s*<\/script>/);
-  if (match) {
-    try {
-      const playInfo = JSON.parse(match[1]);
-      const coverImage = playInfo?.data?.cover || '';
-      console.log('B站 __playinfo__ found, cover:', !!coverImage);
-      if (coverImage) {
-        // 如果找到封面图，继续提取其他信息
-      }
-    } catch (e) {
-      console.error('Parse __playinfo__ error:', e.message);
-    }
-  }
-
-  // 尝试从 og meta 标签提取（最可靠的备用方法）
-  const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-  const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
-  const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
-  const ogVideo = html.match(/<meta[^>]*property=["']og:video["'][^>]*content=["']([^"']+)["']/i);
-
-  // 尝试从视频URL提取封面
-  let coverImage = ogImage ? ogImage[1] : '';
-  if (!coverImage && ogVideo) {
-    // B站封面通常在 og:video:image 或从 og:video 推断
-    const ogVideoImage = html.match(/<meta[^>]*property=["']og:video:image["'][^>]*content=["']([^"']+)["']/i);
-    coverImage = ogVideoImage ? ogVideoImage[1] : '';
-  }
-
-  // 尝试从页面JSON中提取up主信息
-  let author = '';
-  const authorMatch = html.match(/"owner"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"/)
-    || html.match(/"up_name"\s*:\s*"([^"]+)"/)
-    || html.match(/"author"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"/);
-  if (authorMatch) {
-    author = decodeHtmlEntities(authorMatch[1]);
-  }
-
-  // 尝试提取发布时间
-  let publishTime = '';
-  const timeMatch = html.match(/"pubdate"\s*:\s*(\d+)/)
-    || html.match(/"ptime"\s*:\s*(\d+)/);
-  if (timeMatch) {
-    publishTime = formatDate(parseInt(timeMatch[1]) * 1000);
-  }
-
-  // 从HTML标题提取（B站格式: "标题 - UP主 - 哔哩哔哩"）
+  // 方法2: 从HTML中直接提取JSON数据（备用方案）
+  // 提取标题 - 从 <title> 标签
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   let title = '';
-  if (ogTitle) {
-    title = decodeHtmlEntities(ogTitle[1]);
-  } else {
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (titleMatch) {
-      let rawTitle = decodeHtmlEntities(titleMatch[1].trim());
-      // 移除 " - 哔哩哔哩" 后缀
-      rawTitle = rawTitle.replace(/\s*[-_|—]\s*[^-_|—]*[哔哩哔哩bilibiliB站].*/gi, '');
-      // 移除 UP主 名称（通常是最后一个部分）
-      const parts = rawTitle.split(/\s*[-_|—]\s*/);
-      if (parts.length > 1) {
-        // 保留第一部分作为标题，最后部分可能是UP主
-        title = parts[0];
-        if (!author && parts.length > 1) {
-          author = parts[parts.length - 1].trim();
-        }
-      } else {
-        title = rawTitle;
+  let author = '';
+
+  if (titleMatch) {
+    let rawTitle = titleMatch[1].trim();
+    rawTitle = decodeHtmlEntities(rawTitle);
+    // B站标题格式: "标题 - UP主 - 哔哩哔哩"
+    // 移除后缀
+    rawTitle = rawTitle.replace(/\s*[-_|—]\s*[^-_|—]*[哔哩哔哩bilibiliB站].*/gi, '');
+    const parts = rawTitle.split(/\s*[-_|—]\s*/);
+    if (parts.length > 0) {
+      title = parts[0].trim();
+      // 最后一个部分可能是UP主
+      if (parts.length > 1 && !author) {
+        author = parts[parts.length - 1].trim();
       }
     }
   }
 
-  const description = ogDesc ? decodeHtmlEntities(ogDesc[1]) : '';
+  // 提取封面 - 从 pic 字段
+  let coverImage = '';
+  const picMatch = html.match(/"pic"\s*:\s*"([^"]+)"/);
+  if (picMatch) {
+    coverImage = decodeHtmlEntities(picMatch[1]);
+  }
+
+  // 如果没找到封面，尝试其他格式
+  if (!coverImage) {
+    const coverMatch2 = html.match(/"cover"\s*:\s*"([^"]+)"/);
+    if (coverMatch2) {
+      coverImage = decodeHtmlEntities(coverMatch2[1]);
+    }
+  }
+
+  // 提取UP主
+  if (!author) {
+    const ownerMatch = html.match(/"owner"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"/);
+    if (ownerMatch) {
+      author = decodeHtmlEntities(ownerMatch[1]);
+    }
+  }
+  if (!author) {
+    const upNameMatch = html.match(/"up_name"\s*:\s*"([^"]+)"/);
+    if (upNameMatch) {
+      author = decodeHtmlEntities(upNameMatch[1]);
+    }
+  }
+
+  // 提取描述
+  let description = '';
+  const descMatch = html.match(/"desc"\s*:\s*"([^"]+)"/);
+  if (descMatch) {
+    description = decodeHtmlEntities(descMatch[1]);
+  }
+
+  // 提取发布时间
+  let publishTime = '';
+  const pubdateMatch = html.match(/"pubdate"\s*:\s*(\d+)/);
+  if (pubdateMatch) {
+    publishTime = formatDate(parseInt(pubdateMatch[1]) * 1000);
+  }
+  if (!publishTime) {
+    const ptimeMatch = html.match(/"ptime"\s*:\s*(\d+)/);
+    if (ptimeMatch) {
+      publishTime = formatDate(parseInt(ptimeMatch[1]) * 1000);
+    }
+  }
 
   if (title || coverImage || author) {
-    return {
+    const result = {
       title: title || 'B站视频',
       description,
       coverImage,
       author,
       publishTime
     };
+    console.log('B站 fallback metadata extracted:', {
+      title: !!result.title,
+      author: !!result.author,
+      coverImage: !!result.coverImage,
+      description: !!result.description
+    });
+    return result;
   }
 
+  console.log('B站 metadata extraction failed');
   return null;
 }
 
