@@ -22,8 +22,8 @@ const VideoSchema = new mongoose.Schema({
   // 视频来源类型
   source: {
     type: String,
-    enum: ['wechat', 'bilibili', 'other'],
-    default: 'wechat'
+    enum: ['wechat', 'bilibili', 'douyin', 'kuaishou', 'xigua', 'other'],
+    default: 'other'
   },
   // 排序权重
   order: {
