@@ -358,18 +358,30 @@ function extractBilibiliData(html) {
       console.log('B站 __INITIAL_STATE__ found');
 
       // 尝试多种路径获取视频数据 - B站新版可能路径不同
-      let videoData = initialState?.videoData;
+      // 新版B站的数据路径: initialState.videoData 或 initialState.${bvid}?.videoData
+      let videoData = null;
 
-      // 新版B站可能使用的不同路径
+      // 遍历所有键查找视频数据
+      for (const key in initialState) {
+        if (initialState[key]?.videoData) {
+          videoData = initialState[key].videoData;
+          break;
+        }
+        if (initialState[key]?.view) {
+          videoData = initialState[key].view;
+          break;
+        }
+      }
+
+      // 如果还没找到，尝试直接获取
+      if (!videoData && initialState?.videoData) {
+        videoData = initialState.videoData;
+      }
       if (!videoData && initialState?.videoInfo) {
         videoData = initialState.videoInfo;
       }
       if (!videoData && initialState?.uplayerView) {
         videoData = initialState.uplayerView;
-      }
-      // 尝试从 viewData 获取
-      if (!videoData && initialState?.viewData) {
-        videoData = initialState.viewData;
       }
 
       if (videoData) {
@@ -377,11 +389,16 @@ function extractBilibiliData(html) {
           title: videoData.title || '',
           description: videoData.desc || videoData.description || '',
           coverImage: videoData.pic || videoData.cover || '',
-          author: videoData.owner?.name || videoData.author?.name || videoData.up_name || '',
+          author: videoData.owner?.name || videoData.author?.name || videoData.up_name || videoData.staff?.[0]?.name || '',
           publishTime: videoData.pubdate ? formatDate(videoData.pubdate * 1000) :
                        (videoData.ptime ? formatDate(videoData.ptime * 1000) : '')
         };
-        console.log('B站 metadata extracted:', result);
+        console.log('B站 metadata extracted:', {
+          title: !!result.title,
+          author: !!result.author,
+          coverImage: !!result.coverImage,
+          description: !!result.description
+        });
         return result;
       }
     } catch (e) {
@@ -411,7 +428,7 @@ function extractBilibiliData(html) {
     }
   }
 
-  // 提取封面 - 从 pic 字段
+  // 提取封面 - 尝试多种方式
   let coverImage = '';
   const picMatch = html.match(/"pic"\s*:\s*"([^"]+)"/);
   if (picMatch) {
@@ -426,7 +443,15 @@ function extractBilibiliData(html) {
     }
   }
 
-  // 提取UP主
+  // 尝试从og:image提取
+  if (!coverImage) {
+    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+    if (ogImageMatch) {
+      coverImage = ogImageMatch[1];
+    }
+  }
+
+  // 提取UP主 - 尝试多种方式
   if (!author) {
     const ownerMatch = html.match(/"owner"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"/);
     if (ownerMatch) {
@@ -437,6 +462,12 @@ function extractBilibiliData(html) {
     const upNameMatch = html.match(/"up_name"\s*:\s*"([^"]+)"/);
     if (upNameMatch) {
       author = decodeHtmlEntities(upNameMatch[1]);
+    }
+  }
+  if (!author) {
+    const authorNameMatch = html.match(/"author"\s*:\s*"([^"]+)"/);
+    if (authorNameMatch) {
+      author = decodeHtmlEntities(authorNameMatch[1]);
     }
   }
 
@@ -462,6 +493,24 @@ function extractBilibiliData(html) {
 
   if (title || coverImage || author) {
     const result = {
+      title: title || 'B站视频',
+      description,
+      coverImage,
+      author,
+      publishTime
+    };
+    console.log('B站 fallback metadata extracted:', {
+      title: !!result.title,
+      author: !!result.author,
+      coverImage: !!result.coverImage,
+      description: !!result.description
+    });
+    return result;
+  }
+
+  console.log('B站 metadata extraction failed');
+  return null;
+}
       title: title || 'B站视频',
       description,
       coverImage,
