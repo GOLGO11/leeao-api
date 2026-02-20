@@ -51,7 +51,8 @@ router.post('/add', async (req, res) => {
       author: author || metadata.author,
       image: image || metadata.image,
       description: description || metadata.description,
-      publishTime: publishTime || metadata.publishTime
+      publishTime: publishTime || metadata.publishTime,
+      source: detectSource(url)
     });
     await article.save();
 
@@ -215,6 +216,23 @@ function decodeHtmlEntities(str) {
   });
   
   return result;
+}
+
+// 检测文章来源
+function detectSource(url) {
+  if (!url) return 'other';
+  const lowerUrl = url.toLowerCase();
+
+  if (lowerUrl.includes('mp.weixin.qq.com')) return 'wechat';
+  if (lowerUrl.includes('zhihu.com')) return 'zhihu';
+  if (lowerUrl.includes('toutiao.com') || lowerUrl.includes('toutiao.cn')) return 'toutiao';
+  if (lowerUrl.includes('jianshu.com')) return 'jianshu';
+  if (lowerUrl.includes('csdn.net')) return 'csdn';
+  if (lowerUrl.includes('juejin.cn')) return 'juejin';
+  if (lowerUrl.includes('bilibili.com')) return 'bilibili';
+  if (lowerUrl.includes('sspai.com')) return 'sspai';
+
+  return 'other';
 }
 
 module.exports = router;

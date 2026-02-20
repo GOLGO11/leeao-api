@@ -232,7 +232,12 @@ function getDefaultTitle(source) {
 // 获取视频元数据
 async function fetchVideoMetadata(url) {
   const source = detectVideoSource(url);
-  
+
+  // 对于B站，使用B站API获取视频信息
+  if (source === 'bilibili') {
+    return await fetchBilibiliApi(url);
+  }
+
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
@@ -243,7 +248,7 @@ async function fetchVideoMetadata(url) {
   });
 
   const html = await response.text();
-  
+
   // 尝试从抖音页面数据中提取完整信息
   if (source === 'douyin') {
     const douyinData = extractDouyinData(html);
@@ -251,8 +256,8 @@ async function fetchVideoMetadata(url) {
       return douyinData;
     }
   }
-  
-  // 尝试从B站页面数据中提取完整信息
+
+  // 尝试从B站页面数据中提取完整信息（备用）
   if (source === 'bilibili') {
     const bilibiliData = extractBilibiliData(html);
     if (bilibiliData) {
@@ -267,6 +272,57 @@ async function fetchVideoMetadata(url) {
     author: extractVideoAuthor(html),
     publishTime: extractVideoPublishTime(html)
   };
+}
+
+// 使用B站API获取视频信息
+async function fetchBilibiliApi(url) {
+  try {
+    // 提取B站视频ID (BV号或av号)
+    let bvid = '';
+    const bvMatch = url.match(/(BV[a-zA-Z0-9]+)/);
+    if (bvMatch) {
+      bvid = bvMatch[1];
+    } else {
+      const avMatch = url.match(/\/av(\d+)/);
+      if (avMatch) {
+        bvid = avMatch[1]; // 稍后通过API获取
+      }
+    }
+
+    if (!bvid) {
+      console.log('无法提取B站视频ID');
+      return { title: '', description: '', coverImage: '', author: '', publishTime: '' };
+    }
+
+    console.log('Fetching B站 video info for:', bvid);
+
+    // 使用B站公开API获取视频信息
+    const apiUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.bilibili.com'
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.code === 0 && data.data) {
+        const v = data.data;
+        return {
+          title: v.title || '',
+          description: v.desc || '',
+          coverImage: v.pic || '',
+          author: v.owner?.name || '',
+          publishTime: v.pubdate ? formatDate(v.pubdate * 1000) : ''
+        };
+      }
+    }
+  } catch (e) {
+    console.error('B站API error:', e.message);
+  }
+
+  return { title: '', description: '', coverImage: '', author: '', publishTime: '' };
 }
 
 // 从B站页面提取完整数据
