@@ -231,6 +231,8 @@ function getDefaultTitle(source) {
 
 // 获取视频元数据
 async function fetchVideoMetadata(url) {
+  const source = detectVideoSource(url);
+  
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
@@ -243,9 +245,19 @@ async function fetchVideoMetadata(url) {
   const html = await response.text();
   
   // 尝试从抖音页面数据中提取完整信息
-  const douyinData = extractDouyinData(html);
-  if (douyinData) {
-    return douyinData;
+  if (source === 'douyin') {
+    const douyinData = extractDouyinData(html);
+    if (douyinData) {
+      return douyinData;
+    }
+  }
+  
+  // 尝试从B站页面数据中提取完整信息
+  if (source === 'bilibili') {
+    const bilibiliData = extractBilibiliData(html);
+    if (bilibiliData) {
+      return bilibiliData;
+    }
   }
 
   return {
@@ -255,6 +267,34 @@ async function fetchVideoMetadata(url) {
     author: extractVideoAuthor(html),
     publishTime: extractVideoPublishTime(html)
   };
+}
+
+// 从B站页面提取完整数据
+function extractBilibiliData(html) {
+  // B站新版页面使用 __INITIAL_STATE__
+  let match = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[^<]+?\});?\s*<\/script>/);
+  if (match) {
+    try {
+      const initialState = JSON.parse(match[1]);
+      
+      // 视频详情
+      if (initialState?.videoData) {
+        const videoData = initialState.videoData;
+        return {
+          title: videoData.title || '',
+          description: videoData.desc || '',
+          coverImage: videoData.pic || '',
+          author: videoData.owner?.name || '',
+          publishTime: videoData.pubdate ? formatDate(videoData.pubdate * 1000) : ''
+        };
+      }
+    } catch (e) {
+      console.error('Parse __INITIAL_STATE__ error:', e);
+    }
+  }
+  
+  // 旧版页面使用 og meta
+  return null;
 }
 
 // 从抖音页面提取完整数据
