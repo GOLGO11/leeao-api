@@ -26,7 +26,7 @@ router.get('/all', async (req, res) => {
 // 添加视频（管理员） - 只需URL和密码，自动提取元数据
 router.post('/add', async (req, res) => {
   try {
-    const { url, password } = req.body;
+    let { url, password } = req.body;
 
     if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
       return res.status(401).json({ error: '未授权' });
@@ -35,6 +35,10 @@ router.post('/add', async (req, res) => {
     if (!url) {
       return res.status(400).json({ error: 'URL必填' });
     }
+
+    // 清理URL（移除分享时附带的多余文字）
+    url = cleanShareUrl(url);
+    console.log('Cleaned URL:', url);
 
     // 检查是否已存在
     const existVideo = await Video.findOne({ url });
@@ -47,7 +51,14 @@ router.post('/add', async (req, res) => {
     let metadata = { title: '', description: '', coverImage: '' };
     
     try {
-      metadata = await fetchVideoMetadata(url);
+      // 对于抖音短链接，需要先获取最终URL
+      let finalUrl = url;
+      if (source === 'douyin' && url.includes('v.douyin.com')) {
+        finalUrl = await getFinalUrl(url);
+        console.log('Final Douyin URL:', finalUrl);
+      }
+      
+      metadata = await fetchVideoMetadata(finalUrl);
       console.log('Fetched video metadata:', { title: metadata.title, source });
     } catch (e) {
       console.error('获取视频元数据失败:', e);
@@ -67,6 +78,52 @@ router.post('/add', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// 清理分享链接（移除多余文字）
+function cleanShareUrl(url) {
+  // 移除首尾空白
+  url = url.trim();
+  
+  // 尝试提取第一个有效的URL
+  const urlMatch = url.match(/(https?:\/\/[^\s]+)/i);
+  if (urlMatch) {
+    url = urlMatch[1];
+  }
+  
+  // 移除URL末尾可能存在的非URL字符
+  url = url.replace(/[^\x00-\x7F].*$/, ''); // 移除非ASCII字符
+  url = url.replace(/\s+.*$/, ''); // 移除空格后的内容
+  
+  return url;
+}
+
+// 获取最终URL（处理重定向）
+async function getFinalUrl(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+      }
+    });
+    return response.url || url;
+  } catch (e) {
+    // 如果HEAD失败，尝试GET
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+        }
+      });
+      return response.url || url;
+    } catch (e2) {
+      console.error('Failed to get final URL:', e2);
+      return url;
+    }
+  }
+}
 
 // 删除视频（管理员）
 router.delete('/:id', async (req, res) => {
@@ -168,7 +225,9 @@ function getDefaultTitle(source) {
 async function fetchVideoMetadata(url) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     },
     redirect: 'follow'
   });
@@ -184,8 +243,35 @@ async function fetchVideoMetadata(url) {
 
 // 提取视频标题
 function extractVideoTitle(html) {
+  // 抖音特定 - 从页面数据中提取
+  let match = html.match(/"desc"\s*:\s*"([^"\\]+(?:\\.[^"\\]*)*)"/);
+  if (match) {
+    let title = decodeHtmlEntities(match[1]);
+    if (title.length > 3) return title;
+  }
+  
+  // 抖音新版页面结构
+  match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[^<]+\})/);
+  if (match) {
+    try {
+      const routerData = JSON.parse(match[1]);
+      const loaderData = routerData?.loaderData;
+      if (loaderData) {
+        for (const key in loaderData) {
+          const data = loaderData[key];
+          if (data?.aweme_detail?.desc) {
+            return data.aweme_detail.desc;
+          }
+          if (data?.noteInfo?.note?.title) {
+            return data.noteInfo.note.title;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
   // OG标题
-  let match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
   if (match) {
     let title = decodeHtmlEntities(match[1]);
     // 清理后缀
@@ -199,12 +285,6 @@ function extractVideoTitle(html) {
     let title = decodeHtmlEntities(match[1].trim());
     title = title.replace(/\s*[-|·]\s*(抖音|今日头条|哔哩哔哩|bilibili|快手|西瓜视频).*/gi, '');
     if (title.length > 3) return title;
-  }
-
-  // 抖音desc字段
-  match = html.match(/"desc"\s*:\s*"([^"]+)"/);
-  if (match) {
-    return decodeHtmlEntities(match[1]);
   }
 
   return '';
