@@ -24,7 +24,7 @@ async function initializeAdmin() {
   try {
     // 查找管理员用户
     const adminUser = await User.findOne({ username: '爱华山樱' });
-    
+
     if (adminUser && adminUser.role !== 'admin') {
       // 更新为管理员
       await User.findByIdAndUpdate(adminUser._id, { role: 'admin' });
@@ -39,6 +39,7 @@ async function initializeAdmin() {
   }
 }
 
+// 连接MongoDB（异步，不阻塞启动）
 mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('MongoDB connected');
@@ -54,12 +55,13 @@ app.use('/articles', articleRoutes);
 app.use('/videos', videoRoutes);
 app.use('/upload', uploadRoutes);
 
-// 健康检查
+// 健康检查 - 立即响应，不依赖数据库状态
 app.get('/', (req, res) => {
   res.json({
     name: 'Leeao API',
     version: '1.0.0',
-    status: 'running'
+    status: 'running',
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'connecting'
   });
 });
 
