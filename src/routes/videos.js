@@ -406,6 +406,30 @@ function extractBilibiliData(html) {
     }
   }
 
+  // 方法1.5: 尝试从 __playinfo__ 提取（移动端可能用这个）
+  match = html.match(/window\.__playinfo__\s*=\s*(\{[\s\S]+?\})\s*<\/script>/);
+  if (match) {
+    try {
+      const playinfo = JSON.parse(match[1]);
+      if (playinfo?.bvid || playinfo?.data) {
+        const v = playinfo.data || playinfo;
+        const result = {
+          title: v.title || '',
+          description: v.desc || '',
+          coverImage: v.pic || v.cover || '',
+          author: v.owner?.name || v.author?.name || v.up_name || '',
+          publishTime: v.pubdate ? formatDate(v.pubdate * 1000) : ''
+        };
+        if (result.title || result.coverImage || result.author) {
+          console.log('B站 __playinfo__ extracted');
+          return result;
+        }
+      }
+    } catch (e) {
+      console.error('Parse __playinfo__ error:', e.message);
+    }
+  }
+
   // 方法2: 从HTML中直接提取JSON数据（备用方案）
   // 提取标题 - 从 <title> 标签
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
