@@ -252,10 +252,21 @@ async function fetchVideoMetadata(url) {
     }
   }
 
-  // 尝试从B站页面数据中提取完整信息（备用）
+  // 尝试从B站API获取完整信息（优先）
   if (source === 'bilibili') {
+    try {
+      const bilibiliApiData = await fetchBilibiliApi(url);
+      if (bilibiliApiData && bilibiliApiData.title) {
+        console.log('B站 API 数据获取成功');
+        return bilibiliApiData;
+      }
+    } catch (e) {
+      console.log('B站 API 获取失败，尝试从页面提取:', e.message);
+    }
+
+    // API失败后，从页面数据中提取（备用）
     const bilibiliData = extractBilibiliData(html);
-    if (bilibiliData) {
+    if (bilibiliData && bilibiliData.title) {
       return bilibiliData;
     }
   }
