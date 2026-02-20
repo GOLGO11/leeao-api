@@ -233,11 +233,6 @@ function getDefaultTitle(source) {
 async function fetchVideoMetadata(url) {
   const source = detectVideoSource(url);
 
-  // 对于B站，使用B站API获取视频信息
-  if (source === 'bilibili') {
-    return await fetchBilibiliApi(url);
-  }
-
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
