@@ -519,40 +519,6 @@ function extractDouyinData(html) {
   return null;
 }
 
-  // 提取发布时间
-  let publishTime = '';
-  const timeMatch = html.match(/"create_time"\s*:\s*(\d+)/)
-    || html.match(/"createTime"\s*:\s*(\d+)/);
-  if (timeMatch) {
-    publishTime = formatDate(parseInt(timeMatch[1]) * 1000);
-  }
-
-  // 提取描述作为标题
-  let title = '';
-  const descMatch = html.match(/"desc"\s*:\s*"([^"]+)"/);
-  if (descMatch) {
-    title = decodeHtmlEntities(descMatch[1]);
-  }
-
-  if (ogTitle) {
-    title = decodeHtmlEntities(ogTitle[1]);
-  }
-
-  const description = ogDesc ? decodeHtmlEntities(ogDesc[1]) : title;
-
-  if (title || coverImage) {
-    return {
-      title: title || '抖音视频',
-      description,
-      coverImage,
-      author,
-      publishTime
-    };
-  }
-
-  return null;
-}
-
 // 格式化日期
 function formatDate(timestamp) {
   if (!timestamp) return '';
