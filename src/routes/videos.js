@@ -511,24 +511,6 @@ function extractBilibiliData(html) {
   console.log('B站 metadata extraction failed');
   return null;
 }
-      title: title || 'B站视频',
-      description,
-      coverImage,
-      author,
-      publishTime
-    };
-    console.log('B站 fallback metadata extracted:', {
-      title: !!result.title,
-      author: !!result.author,
-      coverImage: !!result.coverImage,
-      description: !!result.description
-    });
-    return result;
-  }
-
-  console.log('B站 metadata extraction failed');
-  return null;
-}
 
 // 从抖音页面提取完整数据
 function extractDouyinData(html) {
