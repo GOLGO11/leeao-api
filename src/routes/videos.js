@@ -394,6 +394,13 @@ function extractBilibiliData(html) {
 
 // 从抖音页面提取完整数据
 function extractDouyinData(html) {
+  // 辅助函数：解码 Unicode 转义的字符串
+  function decodeUnicodeString(str) {
+    if (!str) return '';
+    return str.replace(/\\u002F/g, '/').replace(/\\u003F/g, '?').replace(/\\u003D/g, '=')
+               .replace(/\\u0026/g, '&').replace(/\\u0023/g, '#').replace(/\\u0025/g, '%');
+  }
+
   // 方法1: 尝试解析抖音的 _ROUTER_DATA
   let match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]+?\})\s*<\/script>/);
   if (match) {
@@ -416,15 +423,19 @@ function extractDouyinData(html) {
               author: !!detail.author?.nickname
             });
 
-            // 获取封面图的多种方式
+            // 获取封面图的多种方式 - 抖音封面通常在 video.cover.url_list 或直接在 cover.url_list
             let coverImage = '';
-            if (detail.video?.cover?.url_list?.[0]) {
-              coverImage = detail.video.cover.url_list[0];
-            } else if (detail.video?.origin_cover?.url_list?.[0]) {
-              coverImage = detail.video.origin_cover.url_list[0];
-            } else if (detail.video?.dynamic_cover?.url_list?.[0]) {
-              coverImage = detail.video.dynamic_cover.url_list[0];
-            } else if (detail.video?.cover) {
+            const coverList = detail.video?.cover?.url_list || detail.cover?.url_list;
+            if (coverList && coverList[0]) {
+              coverImage = decodeUnicodeString(coverList[0]);
+            }
+            if (!coverImage && detail.video?.origin_cover?.url_list?.[0]) {
+              coverImage = decodeUnicodeString(detail.video.origin_cover.url_list[0]);
+            }
+            if (!coverImage && detail.video?.dynamic_cover?.url_list?.[0]) {
+              coverImage = decodeUnicodeString(detail.video.dynamic_cover.url_list[0]);
+            }
+            if (!coverImage && detail.video?.cover) {
               coverImage = detail.video.cover;
             }
 
@@ -435,17 +446,22 @@ function extractDouyinData(html) {
               author: detail.author?.nickname || detail.author?.unique_id || '',
               publishTime: detail.create_time ? formatDate(detail.create_time * 1000) : ''
             };
-            console.log('抖音 metadata:', result);
+            console.log('抖音 metadata:', { ...result, coverImage: !!result.coverImage });
             return result;
           }
 
           // 图文笔记
           if (data?.noteInfo?.note) {
             const note = data.noteInfo.note;
+            let coverImage = '';
+            const imgList = note.imageList?.[0]?.urlList;
+            if (imgList && imgList[0]) {
+              coverImage = decodeUnicodeString(imgList[0]);
+            }
             return {
               title: note.title || note.desc || '',
               description: note.desc || '',
-              coverImage: note.imageList?.[0]?.urlList?.[0] || '',
+              coverImage,
               author: note.authorInfo?.nickname || '',
               publishTime: note.createTime ? formatDate(note.createTime) : ''
             };
@@ -457,65 +473,51 @@ function extractDouyinData(html) {
     }
   }
 
-  // 方法2: 尝试从 script 标签中提取视频数据
-  match = html.match(/<script id="RENDER_DATA"[^>]*>([\s\S]+?)<\/script>/);
-  if (match) {
-    try {
-      // 抖音新版使用 base64 编码的 JSON
-      let dataStr = match[1].trim();
-      // 移除可能的 HTML 实体
-      dataStr = dataStr.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      // 解码 URI 编码
-      try {
-        dataStr = decodeURIComponent(dataStr);
-      } catch (e) {
-        // 如果解码失败，使用原始字符串
-      }
+  // 方法2: 从原始 HTML JSON 中提取（更可靠）
+  // 提取 desc
+  const descMatch = html.match(/"desc"\s*:\s*"([^"]+)"/);
+  const title = descMatch ? decodeHtmlEntities(descMatch[1]) : '';
 
-      const renderData = JSON.parse(dataStr);
-      console.log('抖音 RENDER_DATA found');
+  // 提取 nickname
+  const nicknameMatch = html.match(/"nickname"\s*:\s*"([^"]+)"/);
+  const author = nicknameMatch ? decodeHtmlEntities(nicknameMatch[1]) : '';
 
-      // 尝试多种路径获取视频信息
-      const videoData = renderData?.app?.videoDetail
-        || renderData?.detail
-        || renderData?.videoData;
-
-      if (videoData) {
-        return {
-          title: videoData.desc || videoData.title || '',
-          description: videoData.desc || '',
-          coverImage: videoData.cover || videoData.poster || '',
-          author: videoData.author?.nickname || videoData.authorName || '',
-          publishTime: videoData.createTime ? formatDate(videoData.createTime) : ''
-        };
-      }
-    } catch (e) {
-      console.error('Parse RENDER_DATA error:', e.message);
+  // 提取封面 - 从 cover.url_list 中提取
+  let coverImage = '';
+  const coverUrlListMatch = html.match(/"cover"\s*:\s*\{[^}]*"url_list"\s*:\s*\[([^\]]+)\]/);
+  if (coverUrlListMatch) {
+    // 提取第一个 URL
+    const firstUrl = coverUrlListMatch[1].match(/"([^"]+)"/);
+    if (firstUrl) {
+      coverImage = decodeUnicodeString(firstUrl[1]);
     }
   }
 
-  // 方法3: 从 og meta 标签提取（备用方法）
-  const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-  const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
-  const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
-  const ogVideo = html.match(/<meta[^>]*property=["']og:video["'][^>]*content=["']([^"']+)["']/i);
-
-  // 尝试从 JSON 中提取作者和封面
-  let author = '';
-  const authorMatch = html.match(/"nickname"\s*:\s*"([^"]+)"/)
-    || html.match(/"authorName"\s*:\s*"([^"]+)"/);
-  if (authorMatch) {
-    author = decodeHtmlEntities(authorMatch[1]);
-  }
-
-  let coverImage = ogImage ? ogImage[1] : '';
+  // 如果没找到，尝试其他格式
   if (!coverImage) {
-    const coverMatch = html.match(/"cover"\s*:\s*"([^"]+)"/)
-      || html.match(/"poster"\s*:\s*"([^"]+)"/);
-    if (coverMatch) {
-      coverImage = coverMatch[1].replace(/\\\//g, '/');
+    const coverUrlMatch = html.match(/"url"\s*:\s*"([^"]*\.webp[^"]*)"/);
+    if (coverUrlMatch) {
+      coverImage = decodeUnicodeString(coverUrlMatch[1]);
     }
   }
+
+  // 提取创建时间
+  const timeMatch = html.match(/"create_time"\s*:\s*(\d+)/);
+  const publishTime = timeMatch ? formatDate(parseInt(timeMatch[1]) * 1000) : '';
+
+  if (title || coverImage) {
+    console.log('抖音 fallback extraction:', { title: !!title, author: !!author, coverImage: !!coverImage });
+    return {
+      title: title || '抖音视频',
+      description: title,
+      coverImage,
+      author,
+      publishTime
+    };
+  }
+
+  return null;
+}
 
   // 提取发布时间
   let publishTime = '';
