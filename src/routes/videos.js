@@ -48,7 +48,7 @@ router.post('/add', async (req, res) => {
 
     // 自动检测来源并提取元数据
     const source = detectVideoSource(url);
-    let metadata = { title: '', description: '', coverImage: '' };
+    let metadata = { title: '', description: '', coverImage: '', author: '', publishTime: '' };
     
     try {
       // 对于抖音短链接，需要先获取最终URL
@@ -59,7 +59,13 @@ router.post('/add', async (req, res) => {
       }
       
       metadata = await fetchVideoMetadata(finalUrl);
-      console.log('Fetched video metadata:', { title: metadata.title, source });
+      console.log('Fetched video metadata:', { 
+        title: metadata.title, 
+        author: metadata.author,
+        publishTime: metadata.publishTime,
+        coverImage: metadata.coverImage ? 'yes' : 'no',
+        source 
+      });
     } catch (e) {
       console.error('获取视频元数据失败:', e);
     }
@@ -69,7 +75,9 @@ router.post('/add', async (req, res) => {
       title: metadata.title || getDefaultTitle(source),
       description: metadata.description || '',
       coverImage: metadata.coverImage || '',
-      source: source
+      source: source,
+      author: metadata.author || '',
+      publishTime: metadata.publishTime || ''
     });
     await video.save();
 
@@ -233,25 +241,26 @@ async function fetchVideoMetadata(url) {
   });
 
   const html = await response.text();
+  
+  // 尝试从抖音页面数据中提取完整信息
+  const douyinData = extractDouyinData(html);
+  if (douyinData) {
+    return douyinData;
+  }
 
   return {
     title: extractVideoTitle(html),
     description: extractVideoDescription(html),
-    coverImage: extractVideoImage(html)
+    coverImage: extractVideoImage(html),
+    author: extractVideoAuthor(html),
+    publishTime: extractVideoPublishTime(html)
   };
 }
 
-// 提取视频标题
-function extractVideoTitle(html) {
-  // 抖音特定 - 从页面数据中提取
-  let match = html.match(/"desc"\s*:\s*"([^"\\]+(?:\\.[^"\\]*)*)"/);
-  if (match) {
-    let title = decodeHtmlEntities(match[1]);
-    if (title.length > 3) return title;
-  }
-  
-  // 抖音新版页面结构
-  match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[^<]+\})/);
+// 从抖音页面提取完整数据
+function extractDouyinData(html) {
+  // 尝试解析抖音的 _ROUTER_DATA
+  let match = html.match(/window\._ROUTER_DATA\s*=\s*(\{[^<]+\})/);
   if (match) {
     try {
       const routerData = JSON.parse(match[1]);
@@ -259,22 +268,69 @@ function extractVideoTitle(html) {
       if (loaderData) {
         for (const key in loaderData) {
           const data = loaderData[key];
-          if (data?.aweme_detail?.desc) {
-            return data.aweme_detail.desc;
+          
+          // 视频详情
+          if (data?.aweme_detail) {
+            const detail = data.aweme_detail;
+            return {
+              title: detail.desc || '',
+              description: detail.desc || '',
+              coverImage: detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0] || '',
+              author: detail.author?.nickname || detail.author?.unique_id || '',
+              publishTime: detail.create_time ? formatDate(detail.create_time * 1000) : ''
+            };
           }
-          if (data?.noteInfo?.note?.title) {
-            return data.noteInfo.note.title;
+          
+          // 图文笔记
+          if (data?.noteInfo?.note) {
+            const note = data.noteInfo.note;
+            return {
+              title: note.title || note.desc || '',
+              description: note.desc || '',
+              coverImage: note.imageList?.[0]?.urlList?.[0] || '',
+              author: note.authorInfo?.nickname || '',
+              publishTime: note.createTime ? formatDate(note.createTime) : ''
+            };
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Parse _ROUTER_DATA error:', e);
+    }
   }
+  
+  return null;
+}
 
+// 格式化日期
+function formatDate(timestamp) {
+  if (!timestamp) return '';
+  try {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+// 提取视频标题
+function extractVideoTitle(html) {
+  // 抖音desc字段
+  let match = html.match(/"desc"\s*:\s*"([^"\\]+(?:\\.[^"\\]*)*)"/);
+  if (match) {
+    let title = decodeHtmlEntities(match[1]);
+    if (title.length > 3) return title;
+  }
+  
   // OG标题
   match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
   if (match) {
     let title = decodeHtmlEntities(match[1]);
-    // 清理后缀
     title = title.replace(/\s*[-|·]\s*(抖音|今日头条|哔哩哔哩|bilibili|快手|西瓜视频).*/gi, '');
     if (title.length > 3) return title;
   }
@@ -285,6 +341,46 @@ function extractVideoTitle(html) {
     let title = decodeHtmlEntities(match[1].trim());
     title = title.replace(/\s*[-|·]\s*(抖音|今日头条|哔哩哔哩|bilibili|快手|西瓜视频).*/gi, '');
     if (title.length > 3) return title;
+  }
+
+  return '';
+}
+
+// 提取视频作者
+function extractVideoAuthor(html) {
+  // 抖音作者昵称
+  let match = html.match(/"nickname"\s*:\s*"([^"\\]+)"/);
+  if (match) {
+    return decodeHtmlEntities(match[1]);
+  }
+  
+  // 抖音作者ID
+  match = html.match(/"unique_id"\s*:\s*"([^"]+)"/);
+  if (match) {
+    return decodeHtmlEntities(match[1]);
+  }
+  
+  // OG视频作者
+  match = html.match(/<meta[^>]*property=["']video:director["'][^>]*content=["']([^"']+)["']/i);
+  if (match) {
+    return decodeHtmlEntities(match[1]);
+  }
+
+  return '';
+}
+
+// 提取视频发布时间
+function extractVideoPublishTime(html) {
+  // 抖音创建时间（时间戳）
+  let match = html.match(/"create_time"\s*:\s*(\d+)/);
+  if (match) {
+    return formatDate(parseInt(match[1]) * 1000);
+  }
+  
+  // 文章发布时间
+  match = html.match(/<meta[^>]*property=["']article:published_time["'][^>]*content=["']([^"']+)["']/i);
+  if (match) {
+    return match[1];
   }
 
   return '';

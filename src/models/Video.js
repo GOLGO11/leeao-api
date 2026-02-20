@@ -9,7 +9,7 @@ const VideoSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  // 微信视频号链接
+  // 视频链接
   url: {
     type: String,
     required: true
@@ -24,6 +24,16 @@ const VideoSchema = new mongoose.Schema({
     type: String,
     enum: ['wechat', 'bilibili', 'douyin', 'kuaishou', 'xigua', 'other'],
     default: 'other'
+  },
+  // 原作者名称
+  author: {
+    type: String,
+    default: ''
+  },
+  // 原视频发布时间
+  publishTime: {
+    type: String,
+    default: ''
   },
   // 排序权重
   order: {
