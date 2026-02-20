@@ -6,6 +6,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/community');
 const articleRoutes = require('./routes/articles');
+const videoRoutes = require('./routes/videos');
 const uploadRoutes = require('./routes/upload');
 const User = require('./models/User');
 
@@ -50,6 +51,7 @@ mongoose.connect(MONGODB_URI)
 app.use('/auth', authRoutes);
 app.use('/community', communityRoutes);
 app.use('/articles', articleRoutes);
+app.use('/videos', videoRoutes);
 app.use('/upload', uploadRoutes);
 
 // 健康检查
