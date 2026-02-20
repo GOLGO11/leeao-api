@@ -18,7 +18,7 @@ router.post('/add', async (req, res) => {
   try {
     const { url, password, publishTime, author, title, description, image } = req.body;
 
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 
@@ -67,7 +67,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const { password } = req.body;
     
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 

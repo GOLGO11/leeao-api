@@ -28,7 +28,7 @@ router.post('/add', async (req, res) => {
   try {
     let { url, password } = req.body;
 
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 
@@ -138,7 +138,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const { password } = req.body;
     
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 
@@ -158,7 +158,7 @@ router.put('/reorder', async (req, res) => {
   try {
     const { orders, password } = req.body;
     
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 
@@ -179,7 +179,7 @@ router.put('/:id/visibility', async (req, res) => {
   try {
     const { visible, password } = req.body;
     
-    if (password !== (process.env.ADMIN_PASSWORD || 'leeao2025')) {
+    if (password !== (process.env.ADMIN_PASSWORD || 'leeao1935')) {
       return res.status(401).json({ error: '未授权' });
     }
 
@@ -279,34 +279,55 @@ async function fetchBilibiliApi(url) {
   try {
     // 提取B站视频ID (BV号或av号)
     let bvid = '';
-    const bvMatch = url.match(/(BV[a-zA-Z0-9]+)/);
+    const bvMatch = url.match(/(BV[a-zA-Z0-9]{10})/);
     if (bvMatch) {
       bvid = bvMatch[1];
     } else {
       const avMatch = url.match(/\/av(\d+)/);
       if (avMatch) {
-        bvid = avMatch[1]; // 稍后通过API获取
+        // 对于av号，需要先获取BV号
+        const aid = avMatch[1];
+        console.log('Fetching BVID for aid:', aid);
+        const apiUrl = `https://api.bilibili.com/x/web-interface/view?aid=${aid}`;
+        const response = await fetch(apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.bilibili.com'
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.code === 0 && data.data?.bvid) {
+            bvid = data.data.bvid;
+          }
+        }
       }
     }
 
     if (!bvid) {
-      console.log('无法提取B站视频ID');
+      console.log('无法提取B站视频ID, url:', url);
       return { title: '', description: '', coverImage: '', author: '', publishTime: '' };
     }
 
-    console.log('Fetching B站 video info for:', bvid);
+    console.log('Fetching B站 video info for bvid:', bvid);
 
     // 使用B站公开API获取视频信息
     const apiUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
     const response = await fetch(apiUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://www.bilibili.com'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': `https://www.bilibili.com/video/${bvid}`,
+        'Accept': 'application/json',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Origin': 'https://www.bilibili.com'
       }
     });
 
+    console.log('B站 API response status:', response.status);
+
     if (response.ok) {
       const data = await response.json();
+      console.log('B站 API response code:', data.code);
       if (data.code === 0 && data.data) {
         const v = data.data;
         return {
@@ -316,7 +337,11 @@ async function fetchBilibiliApi(url) {
           author: v.owner?.name || '',
           publishTime: v.pubdate ? formatDate(v.pubdate * 1000) : ''
         };
+      } else {
+        console.log('B站 API error response:', data.message || data);
       }
+    } else {
+      console.log('B站 API request failed:', response.status, response.statusText);
     }
   } catch (e) {
     console.error('B站API error:', e.message);
