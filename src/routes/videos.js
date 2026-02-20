@@ -283,6 +283,37 @@ async function fetchVideoMetadata(url) {
 // 使用B站API获取视频信息
 async function fetchBilibiliApi(url) {
   try {
+    // 处理B站短链接 (b23.tv)，需要先解析获取真实URL
+    if (url.includes('b23.tv/')) {
+      console.log('检测到B站短链接，解析真实URL:', url);
+      try {
+        const redirectResponse = await fetch(url, {
+          method: 'GET',
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+          }
+        });
+        const location = redirectResponse.headers.get('location');
+        if (location) {
+          console.log('短链接解析为:', location);
+          url = location;
+        } else {
+          // 如果manual redirect不工作，尝试follow方式
+          const followResponse = await fetch(url, {
+            redirect: 'follow',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+            }
+          });
+          url = followResponse.url;
+          console.log('短链接解析为(follow):', url);
+        }
+      } catch (e) {
+        console.log('短链接解析失败，使用原URL:', e.message);
+      }
+    }
+
     // 提取B站视频ID (BV号或av号)
     let bvid = '';
     const bvMatch = url.match(/(BV[a-zA-Z0-9]{10})/);
