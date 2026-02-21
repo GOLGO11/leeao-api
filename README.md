@@ -19,7 +19,7 @@
 在项目设置中添加以下环境变量：
 
 ```
-ADMIN_PASSWORD=leeao2025
+ADMIN_PASSWORD=xxxxxxxx
 R2_ENDPOINT=https://<你的account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=<R2访问密钥ID>
 R2_SECRET_ACCESS_KEY=<R2访问密钥>
