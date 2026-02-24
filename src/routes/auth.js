@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { hashPassword, generateToken } = require('../middleware/auth');
+const { hashPassword, verifyPassword, generateToken } = require('../middleware/auth');
 
 // 管理员用户名列表
 const ADMIN_USERNAMES = ['爱华山樱'];
@@ -90,6 +90,45 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 淇敼瀵嗙爜锛堟棤闇€鐧诲綍锛岀敤鎴峰悕 + 鏃у瘑鐮?+ 鏂板瘑鐮侊級
+router.post('/change-password', async (req, res) => {
+  try {
+    const username = (req.body.username || '').trim();
+    const oldPassword = req.body.oldPassword || req.body.currentPassword || '';
+    const newPassword = req.body.newPassword || '';
+
+    if (!username || !oldPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 4 chars' });
+    }
+    if (oldPassword === newPassword) {
+      return res.status(400).json({ success: false, error: 'New password cannot equal current password' });
+    }
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const isOldPasswordValid = await verifyPassword(oldPassword, user.password);
+    if (!isOldPasswordValid) {
+      return res.status(401).json({ success: false, error: 'Current password incorrect' });
+    }
+
+    user.password = await hashPassword(newPassword);
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
