@@ -8,6 +8,7 @@ const communityRoutes = require('./routes/community');
 const articleRoutes = require('./routes/articles');
 const videoRoutes = require('./routes/videos');
 const uploadRoutes = require('./routes/upload');
+const projectRoutes = require('./routes/projects');
 const User = require('./models/User');
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/community', communityRoutes);
 app.use('/articles', articleRoutes);
 app.use('/videos', videoRoutes);
 app.use('/upload', uploadRoutes);
+app.use('/projects', projectRoutes);
 
 // 健康检查 - 立即响应，不依赖数据库状态
 app.get('/', (req, res) => {
