@@ -12,6 +12,8 @@ const ProjectParticipationSchema = new mongoose.Schema({
     required: true,
   },
   joinedAt: { type: Date, default: Date.now },
+  isCompleted: { type: Boolean, default: false },
+  completedAt: { type: Date, default: null },
 });
 
 ProjectParticipationSchema.index({ projectId: 1, userId: 1 }, { unique: true });

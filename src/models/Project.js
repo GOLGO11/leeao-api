@@ -12,6 +12,9 @@ const ProjectSchema = new mongoose.Schema(
     coverImage: { type: String, trim: true, maxlength: 2048 },
     isPublished: { type: Boolean, default: true },
     participationOpen: { type: Boolean, default: true },
+    // Collaboration projects are completed by an administrator. Personal
+    // projects use the per-participant completion state instead.
+    isCompleted: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true },
