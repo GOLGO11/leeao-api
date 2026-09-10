@@ -395,6 +395,9 @@ router.post('/:projectId/participate', authMiddleware, async (req, res) => {
     if (!project.participationOpen) {
       return res.status(400).json({ error: '该项目暂不开放参与' });
     }
+    if (project.type === 'collaboration' && project.isCompleted) {
+      return res.status(400).json({ error: '该合作项目已完成，不能再参与' });
+    }
 
     const user = await User.findById(req.userId);
     if (!user) {
