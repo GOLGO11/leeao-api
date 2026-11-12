@@ -13,14 +13,16 @@
 
 ## 2. 添加环境变量
 
-在 Railway 的 leeao-api 服务中添加：
+Railway Bucket 的 Credentials 页面会提供以下变量。请将它们添加到
+`leeao-api` 服务，并保持 Bucket、Endpoint、Region 与生产 Bucket 一致：
 
 ```
-RAILWAY_BUCKET_NAME=<你的bucket名称>
-RAILWAY_BUCKET_REGION=<region，如 us-east-1>
-RAILWAY_BUCKET_ENDPOINT=<endpoint URL>
-RAILWAY_BUCKET_ACCESS_KEY_ID=<Access Key ID>
-RAILWAY_BUCKET_SECRET_ACCESS_KEY=<Secret Access Key>
+AWS_S3_BUCKET_NAME=<S3 bucket名称，通常带唯一后缀>
+AWS_DEFAULT_REGION=<region>
+AWS_ENDPOINT_URL=<S3 endpoint URL>
+AWS_ACCESS_KEY_ID=<Access Key ID>
+AWS_SECRET_ACCESS_KEY=<Secret Access Key>
+AWS_S3_URL_STYLE=virtual
 RAILWAY_STATIC_URL=https://leeao-api-production.up.railway.app
 ```
 
@@ -31,11 +33,12 @@ RAILWAY_STATIC_URL=https://leeao-api-production.up.railway.app
 ## 环境变量示例
 
 ```
-RAILWAY_BUCKET_NAME=leeao-images
-RAILWAY_BUCKET_REGION=us-east-1
-RAILWAY_BUCKET_ENDPOINT=https://leeao-images.s3.us-east-1.storage.railway.app
-RAILWAY_BUCKET_ACCESS_KEY_ID=xxxxxxxx
-RAILWAY_BUCKET_SECRET_ACCESS_KEY=xxxxxxxx
+AWS_S3_BUCKET_NAME=leeao-images-xxxxxxxx
+AWS_DEFAULT_REGION=auto
+AWS_ENDPOINT_URL=https://t3.storageapi.dev
+AWS_ACCESS_KEY_ID=xxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxx
+AWS_S3_URL_STYLE=virtual
 RAILWAY_STATIC_URL=https://leeao-api-production.up.railway.app
 ```
 

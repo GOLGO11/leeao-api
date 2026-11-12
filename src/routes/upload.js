@@ -18,7 +18,10 @@ const s3Config = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
-  forcePathStyle: true,
+  // New Railway Buckets use virtual-hosted style. Older buckets can still
+  // opt into path style through the AWS_S3_URL_STYLE variable.
+  forcePathStyle:
+    (process.env.AWS_S3_URL_STYLE || 'virtual').toLowerCase() === 'path',
 };
 
 console.log('S3 Config:', {
