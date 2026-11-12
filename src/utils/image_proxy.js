@@ -1,5 +1,7 @@
-const RAILWAY_URL = (process.env.RAILWAY_STATIC_URL ||
-  'https://leeao-api-production.up.railway.app').replace(/\/$/, '');
+const configuredRailwayUrl = process.env.RAILWAY_STATIC_URL ||
+  'https://leeao-api-production.up.railway.app';
+const RAILWAY_URL = `${/^https?:\/\//i.test(configuredRailwayUrl) ? '' : 'https://'}${configuredRailwayUrl}`
+  .replace(/\/$/, '');
 
 const ALLOWED_IMAGE_HOSTS = [
   'qpic.cn',
