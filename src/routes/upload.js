@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const crypto = require('crypto');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const fetch = require('node-fetch');
 const { authMiddleware } = require('../middleware/auth');
+const { isAllowedExternalImageUrl } = require('../utils/image_proxy');
 
 // 配置 multer
 const upload = multer({
@@ -33,6 +36,7 @@ console.log('S3 Config:', {
 const s3Client = new S3Client(s3Config);
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'leeao-images';
+const MAX_EXTERNAL_IMAGE_BYTES = 10 * 1024 * 1024;
 
 // Railway 项目 URL - 确保包含 https://
 let RAILWAY_URL = process.env.RAILWAY_STATIC_URL || 'https://leeao-api-production.up.railway.app';
@@ -81,6 +85,85 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res) =>
   }
 });
 
+// 代理并缓存受支持的第三方封面，避免客户端直接访问境外图片 CDN。
+router.get('/external', async (req, res) => {
+  const imageUrl = typeof req.query.url === 'string' ? req.query.url : '';
+  if (!isAllowedExternalImageUrl(imageUrl)) {
+    return res.status(400).json({ error: '不支持的图片地址' });
+  }
+
+  const cacheKey = `images/external/${crypto
+    .createHash('sha256')
+    .update(imageUrl)
+    .digest('hex')}`;
+
+  try {
+    const cached = await s3Client.send(new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: cacheKey,
+    }));
+    return sendImageResponse(res, cached.Body, cached.ContentType);
+  } catch (error) {
+    console.log('External image cache miss:', error.name || error.message);
+  }
+
+  try {
+    const source = new URL(imageUrl);
+    const response = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        Referer: source.hostname.includes('douyin')
+          ? 'https://www.douyin.com/'
+          : source.hostname.includes('bilibili') || source.hostname.includes('hdslb')
+              ? 'https://www.bilibili.com/'
+              : 'https://mp.weixin.qq.com/',
+      },
+      timeout: 15000,
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: `图片源返回 ${response.status}` });
+    }
+
+    const contentType = (response.headers.get('content-type') || '').split(';')[0];
+    if (!contentType.startsWith('image/')) {
+      return res.status(502).json({ error: '图片源返回的不是图片' });
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_EXTERNAL_IMAGE_BYTES) {
+      return res.status(413).json({ error: '图片过大' });
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    for await (const chunk of response.body) {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_EXTERNAL_IMAGE_BYTES) {
+        return res.status(413).json({ error: '图片过大' });
+      }
+      chunks.push(chunk);
+    }
+    const imageBuffer = Buffer.concat(chunks);
+
+    try {
+      await s3Client.send(new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: cacheKey,
+        Body: imageBuffer,
+        ContentType: contentType,
+      }));
+    } catch (error) {
+      console.error('External image cache write failed:', error.message);
+    }
+
+    return sendImageResponse(res, imageBuffer, contentType);
+  } catch (error) {
+    console.error('External image proxy failed:', error.message);
+    return res.status(502).json({ error: '图片源暂时无法访问' });
+  }
+});
+
 // 图片代理访问 - 从Railway Bucket获取图片并返回
 router.get('/image/:key(*)', async (req, res) => {
   try {
@@ -117,5 +200,15 @@ router.get('/image/:key(*)', async (req, res) => {
     res.status(404).json({ error: '图片不存在' });
   }
 });
+
+function sendImageResponse(res, body, contentType) {
+  res.setHeader('Content-Type', contentType || 'image/jpeg');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (Buffer.isBuffer(body)) {
+    return res.send(body);
+  }
+  return body.pipe(res);
+}
 
 module.exports = router;

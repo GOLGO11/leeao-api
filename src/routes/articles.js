@@ -2,12 +2,21 @@ const express = require('express');
 const router = express.Router();
 const Article = require('../models/Article');
 const fetch = require('node-fetch');
+const { toProxiedImageUrl } = require('../utils/image_proxy');
+
+function formatArticle(article) {
+  const value = article.toObject ? article.toObject() : { ...article };
+  return {
+    ...value,
+    image: toProxiedImageUrl(value.image),
+  };
+}
 
 // 获取文章列表
 router.get('/', async (req, res) => {
   try {
     const articles = await Article.find().sort({ addedAt: -1 });
-    res.json({ articles });
+    res.json({ articles: articles.map(formatArticle) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -56,7 +65,7 @@ router.post('/add', async (req, res) => {
     });
     await article.save();
 
-    res.json({ success: true, article });
+    res.json({ success: true, article: formatArticle(article) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

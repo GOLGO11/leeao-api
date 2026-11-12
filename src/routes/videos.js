@@ -2,12 +2,21 @@ const express = require('express');
 const router = express.Router();
 const Video = require('../models/Video');
 const fetch = require('node-fetch');
+const { toProxiedImageUrl } = require('../utils/image_proxy');
+
+function formatVideo(video) {
+  const value = video.toObject ? video.toObject() : { ...video };
+  return {
+    ...value,
+    coverImage: toProxiedImageUrl(value.coverImage),
+  };
+}
 
 // 获取视频列表
 router.get('/', async (req, res) => {
   try {
     const videos = await Video.find({ visible: true }).sort({ order: 1, addedAt: -1 });
-    res.json({ videos });
+    res.json({ videos: videos.map(formatVideo) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -17,7 +26,7 @@ router.get('/', async (req, res) => {
 router.get('/all', async (req, res) => {
   try {
     const videos = await Video.find().sort({ order: 1, addedAt: -1 });
-    res.json({ videos });
+    res.json({ videos: videos.map(formatVideo) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -81,7 +90,7 @@ router.post('/add', async (req, res) => {
     });
     await video.save();
 
-    res.json({ success: true, video });
+    res.json({ success: true, video: formatVideo(video) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -192,7 +201,7 @@ router.put('/:id/visibility', async (req, res) => {
       return res.status(404).json({ error: '视频不存在' });
     }
 
-    res.json({ success: true, video });
+    res.json({ success: true, video: formatVideo(video) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
